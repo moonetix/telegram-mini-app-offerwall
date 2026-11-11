@@ -12,7 +12,7 @@ A small Node.js server for a Telegram Mini App with the [Moonetix](https://moone
 
 > **Get your App ID and keys: sign up free at https://moonetix.com/register**
 
-## Why this repo
+## What it gets right
 
 1. **Nothing to trust on the client.** The user comes only from `initData` your server validated with the bot token. The link salt and postback key never reach the Mini App.
 2. **Balances that stay right.** Each `transaction_id` is credited once, a reversal takes back exactly what was credited, and the answer is 2xx only after the change is stored.
