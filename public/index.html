@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Earn</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main>
+    <p class="hint" id="hello">Loading...</p>
+    <p class="balance"><span id="balance">-</span> <span id="currency"></span></p>
+
+    <section id="age" hidden>
+      <p>Offers are for users aged 16 or older. Users under 18 need a parent's permission.</p>
+      <button id="confirm-age" type="button">I am 16 or older</button>
+    </section>
+
+    <section id="earn-box" hidden>
+      <button id="earn" type="button" disabled>Earn</button>
+      <p class="hint">The offerwall opens in your browser. Turn off any VPN first. Rewards arrive here after an offer is confirmed.</p>
+    </section>
+
+    <button id="refresh" type="button" class="secondary">Refresh balance</button>
+    <p class="hint" id="status" role="status"></p>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>

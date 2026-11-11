@@ -1,0 +1,16 @@
+{
+  "name": "telegram-mini-app-offerwall",
+  "version": "1.0.0",
+  "description": "Telegram Mini App with a Moonetix offerwall: server-side initData validation, signed links, postback crediting.",
+  "private": true,
+  "license": "MIT",
+  "main": "src/server.js",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "start": "node --env-file=.env --disable-warning=ExperimentalWarning src/server.js",
+    "set-webhook": "node --env-file=.env scripts/set-webhook.js",
+    "test": "node --disable-warning=ExperimentalWarning --test"
+  }
+}
