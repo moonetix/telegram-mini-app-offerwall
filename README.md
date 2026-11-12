@@ -5,13 +5,13 @@
 [![CI](https://github.com/moonetix/telegram-mini-app-offerwall/actions/workflows/ci.yml/badge.svg)](https://github.com/moonetix/telegram-mini-app-offerwall/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-docs.moonetix.com-004ABB)](https://docs.moonetix.com/offerwall-link)
-[![Get keys](https://img.shields.io/badge/get%20keys-moonetix.com-004ABB)](https://moonetix.com/register)
+[![Get keys](https://img.shields.io/badge/get%20keys-moonetix.com-004ABB)](https://moonetix.com/register?from=github-telegram-mini-app-offerwall)
 [![Node 22](https://img.shields.io/badge/node-22-339933)](https://moonetix.com/academy/integrations/make-a-telegram-mini-app)
 [![Zero dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen)](https://moonetix.com/industries/telegram)
 
-A small Node.js server for a Telegram Mini App with the [Moonetix](https://moonetix.com) offerwall. It validates Telegram's `initData`, signs the offerwall link on the server, opens it with `Telegram.WebApp.openLink`, and credits coins from Moonetix postbacks. Moonetix is a pay-per-result affiliate network: your users earn your own currency by completing offers, and you earn per completed offer.
+A small Node.js server for a Telegram Mini App with the [Moonetix](https://moonetix.com) offerwall. It validates Telegram's `initData`, signs the offerwall link on the server, opens it with `Telegram.WebApp.openLink`, and credits coins from Moonetix postbacks. Moonetix is an affiliate network: your users earn your own currency by completing offers, and you earn per completed offer.
 
-> **Get your App ID and keys: sign up free at https://moonetix.com/register**
+> **Get your App ID and keys: sign up free at https://moonetix.com/register?from=github-telegram-mini-app-offerwall**
 
 ## What it gets right
 
@@ -28,8 +28,8 @@ sequenceDiagram
     participant S as Your server
     participant M as Moonetix offerwall
     U->>T: Opens the Mini App or sends /earn
-    T->>S: initData (signed by Telegram)
-    S->>S: Validate initData, map Telegram user to your account ID
+    T->>S: initData (Mini App) or webhook update (/earn)
+    S->>S: Check initData HMAC or webhook secret, map Telegram user to account ID
     S-->>T: Signed offerwall link for that account ID
     T->>M: openLink, or URL button in the private chat
     U->>M: Completes an offer
@@ -62,16 +62,18 @@ https://YOUR_HOST/moonetix/postback?user={user_id}&tx={transaction_id}&event={ev
 
 Put the server behind https (a reverse proxy or your host's TLS). Telegram only opens Mini Apps and sends webhooks over https.
 
-| Variable | What it is |
-| --- | --- |
-| `TELEGRAM_BOT_TOKEN` | Your bot token. Server only. |
-| `TELEGRAM_WEBHOOK_SECRET` | Random string Telegram sends back in every webhook call. |
-| `PUBLIC_URL` | Public https address of this server. |
-| `MOONETIX_APP_ID` | App ID from the Integration section. |
-| `MOONETIX_LINK_SALT` | Link hash salt from the Integration section. |
-| `MOONETIX_POSTBACK_KEY` | Postback secret key from the Postback page. |
-| `INIT_DATA_MAX_AGE` | Oldest `initData` accepted, in seconds. Default 3600. |
-| `DATABASE_PATH`, `PORT`, `CURRENCY_NAME` | Optional. |
+| Variable | Required | Default | What it is |
+| --- | --- | --- | --- |
+| `TELEGRAM_BOT_TOKEN` | yes | none | Your bot token. Validates `initData` and calls the Bot API. Server only. |
+| `TELEGRAM_WEBHOOK_SECRET` | yes | none | 1 to 256 characters from `A-Z a-z 0-9 _ -`. Telegram sends it back in every webhook call. |
+| `MOONETIX_APP_ID` | yes | none | App ID from the Integration section. |
+| `MOONETIX_LINK_SALT` | yes | none | Link hash salt from the Integration section. |
+| `MOONETIX_POSTBACK_KEY` | yes | none | Postback secret key from the Postback page. |
+| `PUBLIC_URL` | for `set-webhook` | none | Public https address of this server. Also used for the Open the app button. |
+| `PORT` | no | `3000` | HTTP port. |
+| `DATABASE_PATH` | no | `./data.sqlite` | SQLite file. |
+| `INIT_DATA_MAX_AGE` | no | `3600` | Oldest `initData` accepted, in seconds. |
+| `CURRENCY_NAME` | no | `Coins` | Currency name shown in the Mini App and bot replies. |
 
 ## How it works
 
@@ -131,14 +133,34 @@ The tests need no Telegram account and no network. They:
 - start the server on a random port with an in-memory database and replay real Moonetix postbacks: credit, retry, decimal rewards, reversal, repeated reversal, reversal of an uncredited `test_` transaction, unknown users, and tampered or wrongly signed postbacks;
 - check the webhook secret, that `/earn` sends a URL button only in private chats, and that it asks unconfirmed users to open the app first.
 
+To check a deployed or local server from the outside, run [postback-tester](https://github.com/moonetix/postback-tester) against it. It signs postbacks the way Moonetix does and sends a credit and its retry, three kinds of reversal, four forged or unsigned postbacks and five parallel copies of one credit. Open the Mini App once first so account `1` exists:
+
+```bash
+export MOONETIX_POSTBACK_KEY=your-postback-secret-key   # same value as in .env
+npx github:moonetix/postback-tester --preset moonetix \
+  'http://localhost:3000/moonetix/postback?user={user_id}&tx={transaction_id}&event={event_id}&status={status}&reward={reward}&payout={payout}&offer={offer_name}&hash={hash}' --user 1
+```
+
 ## Test it with Moonetix
 
 1. Open the Mini App from a test Telegram account. Your account gets ID 1 on a fresh database.
 2. In the dashboard, open Offerwalls, your offerwall, Integration. Under Integration status, use Check a link and compare Test a link for user ID `1` with the link your server returns.
-3. Click Send a test postback with user ID `1` and status 1. The balance in the Mini App goes up once. Sending the same postback again from Reports, Postbacks changes nothing.
-4. A status 2 test gets a new `test_` transaction ID that was never credited, so the server answers 200 and changes nothing. You can also resend from the Postback page.
+3. Click Send a test postback with user ID `1` and status 1. This server credits test postbacks for real account IDs, so the balance in the Mini App goes up once. A retry of the same transaction changes nothing.
+4. A status 2 test gets a new `test_` transaction ID that was never credited, so the server answers 200 and changes nothing. The Postback page has the same test sender.
 5. Open the offerwall from a normal home or mobile connection. VPNs, proxies, Tor and data center networks see a block page.
 6. Before launch, remove the test rewards from your test account.
+
+## Common problems
+
+| What you see | Why, and the fix |
+| --- | --- |
+| `node: .env: not found` on `npm start` | `npm start` reads `.env` from the repo root. Run `cp .env.example .env` and fill it in. |
+| `Missing environment variables: ...` | One of the five required variables is empty. The message lists which. |
+| `Set TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET and an https PUBLIC_URL first.` | `npm run set-webhook` needs an `https://` `PUBLIC_URL`. Telegram rejects plain http. |
+| Page says "Open this app from Telegram." | It was opened in a normal browser, so there is no `initData`. Open it from the bot's menu button. |
+| `/api/session` answers `403 invalid_init_data` | `TELEGRAM_BOT_TOKEN` belongs to another bot, or `initData` is older than `INIT_DATA_MAX_AGE`. |
+| `/earn` gets no reply, webhook calls answer `401` | `TELEGRAM_WEBHOOK_SECRET` changed after `set-webhook`. Run `npm run set-webhook` again. |
+| Postback answers `403 invalid hash`, or `200 ignored: unknown user` | Wrong `MOONETIX_POSTBACK_KEY`; or the user ID is not one of your account IDs (`test_user`, for example). Account IDs start at 1. |
 
 ## Learn more
 
@@ -150,9 +172,17 @@ The tests need no Telegram account and no network. They:
 
 ## Get started
 
-**Get your App ID and keys: sign up free at https://moonetix.com/register**
+**Get your App ID and keys: sign up free at https://moonetix.com/register?from=github-telegram-mini-app-offerwall**
 
 Every publisher application is reviewed by hand. Once you are approved, add your Mini App as an app, set your coin name and rate, and paste the keys into `.env`.
+
+## More Moonetix examples
+
+- **Start here:** [awesome-offerwalls](https://github.com/moonetix/awesome-offerwalls), [offerwall-postback-handlers](https://github.com/moonetix/offerwall-postback-handlers)
+- **Web and backends:** [offerwall-nextjs-starter](https://github.com/moonetix/offerwall-nextjs-starter), [offerwall-react-vite](https://github.com/moonetix/offerwall-react-vite), [offerwall-vue-nuxt](https://github.com/moonetix/offerwall-vue-nuxt), [offerwall-express](https://github.com/moonetix/offerwall-express), [offerwall-laravel](https://github.com/moonetix/offerwall-laravel), [offerwall-django](https://github.com/moonetix/offerwall-django), [offerwall-firebase-functions](https://github.com/moonetix/offerwall-firebase-functions), [offerwall-supabase](https://github.com/moonetix/offerwall-supabase), [rewards-site-starter](https://github.com/moonetix/rewards-site-starter), [moonetix-offerwall-wordpress](https://github.com/moonetix/moonetix-offerwall-wordpress)
+- **Apps and games:** [offerwall-flutter-example](https://github.com/moonetix/offerwall-flutter-example), [offerwall-unity-example](https://github.com/moonetix/offerwall-unity-example), [offerwall-godot](https://github.com/moonetix/offerwall-godot)
+- **Communities and desktop:** [discord-rewards-bot](https://github.com/moonetix/discord-rewards-bot), [offerwall-chrome-extension](https://github.com/moonetix/offerwall-chrome-extension)
+- **Tools and data:** [postback-tester](https://github.com/moonetix/postback-tester), [signup-guard](https://github.com/moonetix/signup-guard), [datacenter-ip-ranges](https://github.com/moonetix/datacenter-ip-ranges), [reward-economy-kit](https://github.com/moonetix/reward-economy-kit), [referral-engine](https://github.com/moonetix/referral-engine), [gamification-kit](https://github.com/moonetix/gamification-kit), [offerwall-fraud-playbook](https://github.com/moonetix/offerwall-fraud-playbook), [affiliate-postback-macros](https://github.com/moonetix/affiliate-postback-macros), [country-tiers](https://github.com/moonetix/country-tiers)
 
 ## License
 
